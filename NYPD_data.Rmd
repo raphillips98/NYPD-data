@@ -1,0 +1,124 @@
+---
+title: "NYPD Shooting Incident Data Analysis"
+author: "Ryan Phillips"
+date: "2023-06-14"
+output: html_document
+---
+
+Necessary packages for this analysis: tidyverse core packages.
+
+## Step 0: Import Library
+
+```{r load_tidyverse, message=FALSE}
+##install.packages("tidyverse") to install
+library(tidyverse)
+```
+
+## Step 1: Read in Data
+
+Begin by reading in data from csv file from the City of New York.
+
+```{r import_data, message=FALSE}
+NYPD_data <- read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+
+```
+
+## Step 2: Clean and Transform Data
+
+Select only columns relevant to our investigation of this data
+
+```{r tidy_NYPD_data}
+NYPD_data <- NYPD_data %>% mutate(OCCUR_DATE= mdy(OCCUR_DATE)) %>% select(-c(JURISDICTION_CODE,INCIDENT_KEY,LOC_OF_OCCUR_DESC,LOC_CLASSFCTN_DESC,STATISTICAL_MURDER_FLAG,Latitude,Longitude,Lon_Lat,X_COORD_CD,Y_COORD_CD,LOCATION_DESC,PRECINCT, PERP_RACE, VIC_RACE)) 
+
+
+```
+
+Rename Date and time
+
+```{r rename_Date_Time}
+NYPD_data <- NYPD_data %>% rename(Date = OCCUR_DATE, Time = OCCUR_TIME)
+
+```
+
+Filter out NA and UNKNOWN variables
+
+```{r drop_na_NYPD_data}
+NYPD_data_tidy <- NYPD_data %>% drop_na()
+# filter out Unknown vic age group variables
+NYPD_data_tidy <- NYPD_data_tidy %>% filter(!grepl('UNKNOWN', VIC_AGE_GROUP))
+NYPD_data_tidy <- NYPD_data_tidy %>% filter(!grepl('1022', VIC_AGE_GROUP))
+
+```
+
+Summary of our cleaned data
+
+```{r summary_of_data}
+summary(NYPD_data_tidy)
+```
+
+## Step 3: Add Analysis and Visualization
+
+Lets sort victim age groups in descending order by total number, to see which age group has the most instances.
+
+```{r order_age_groups}
+NYPD_data_tidy %>% group_by(VIC_AGE_GROUP) %>% summarise(Total=n()) %>% arrange(desc(Total))
+```
+
+Create a bar chart to visualize instances per age group.
+
+```{r bar_graphs}
+vic_age_data <- NYPD_data_tidy %>% group_by(VIC_AGE_GROUP) %>% summarize(incidents = n())
+
+ggplot(vic_age_data, aes(x=VIC_AGE_GROUP, y=incidents, fill=VIC_AGE_GROUP)) +
+  geom_bar(stat = "identity") +
+  xlab("AGE") + ylab("INCIDENTS") +
+  ggtitle("SHOOTING INCIDENTS BY AGE OF VICTIMS")+
+  theme_light()
+```
+
+I want to see which age group has the highest chance of becoming a victim of a shooting. I begin by creating a population column for each age range.
+
+```{r age_groups_by_population}
+NYPD_data_tidy <- NYPD_data_tidy %>% 
+  mutate(Population = case_when(
+    VIC_AGE_GROUP == "<18" ~ 1798842,
+    VIC_AGE_GROUP == "18-24" ~ 773258,
+    VIC_AGE_GROUP == "25-44" ~ 2708853,
+    VIC_AGE_GROUP == "45-64" ~ 2101599,
+    VIC_AGE_GROUP == "65+" ~ 1155075,
+    TRUE ~ NA_real_
+  ))
+```
+
+Next I calculate and plot the shooting incident rate per 100,000 people for each age group.
+
+```{r per_capita_age_group}
+vic_age_data_rate <- NYPD_data_tidy %>%
+  group_by(VIC_AGE_GROUP) %>%
+  summarise(total_shootings = n(),
+            population = unique(Population),
+            shooting_rate = total_shootings / (population / 100000)) %>%
+  arrange(desc(shooting_rate))
+
+ggplot(vic_age_data_rate, aes(x = VIC_AGE_GROUP, y = shooting_rate)) +
+  geom_bar(stat = "identity", fill = "turquoise", color = "black") +
+  ggtitle("Chance of Getting Shot by Age") +
+  xlab("Age") +
+  ylab("Shooting Rate per 100,000 People") +
+  theme_minimal()
+```
+
+Now I would like to see what time of day that shootings are most likely to occur.
+```{r time_of_day}
+NYPD_data_tidy$HOUR = hour(hms(as.character(NYPD_data_tidy$Time)))
+
+occur_hour = NYPD_data_tidy %>% group_by(HOUR) %>% count()
+
+ggplot(occur_hour, aes(x=HOUR, y=n)) +
+  geom_line() +
+  labs(title = "What time should people be most cautious of shootings in NYC",
+       x = "Hour Occured",
+       y= "Number of Incidents") +
+  theme_minimal()
+
+```
