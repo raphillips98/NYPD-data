@@ -1,9 +1,13 @@
 ---
 title: "NYPD Shooting Incident Data Analysis"
 author: "Ryan Phillips"
-date: "2023-06-14"
-output: html_document
+date: "2023-06-24"
+output:
+  pdf_document: default
+  html_document: default
 ---
+
+This dataset includes every shooting incident in NYC from 2006 to 2022. In this report I will explore NYPD Shooting Report Incident Data to identify patterns and trends in gun violence in NYC. Insights derived by data analytics can be used to drive informed policing methods and policy.
 
 Necessary packages for this analysis: tidyverse core packages.
 
@@ -51,7 +55,6 @@ NYPD_data_tidy <- NYPD_data_tidy %>% filter(!grepl('1022', VIC_AGE_GROUP))
 ```
 
 Summary of our cleaned data
-
 ```{r summary_of_data}
 summary(NYPD_data_tidy)
 ```
@@ -108,7 +111,15 @@ ggplot(vic_age_data_rate, aes(x = VIC_AGE_GROUP, y = shooting_rate)) +
   theme_minimal()
 ```
 
+**Conclusion:** The 25-44 year old age group has the highest overall incident count, slightly edging out 18-24. Once adjusted to shooting incidents per 100,000, 18-24 year old are at a significantly higher chance of being a victim of gun violence in NYC than any other age group.
+
+Which sex is most likely to become a victim of gun crime in NYC?
+```{r vic_sex}
+table(NYPD_data_tidy$VIC_SEX)
+```
+
 Now I would like to see what time of day that shootings are most likely to occur.
+
 ```{r time_of_day}
 NYPD_data_tidy$HOUR = hour(hms(as.character(NYPD_data_tidy$Time)))
 
@@ -122,3 +133,34 @@ ggplot(occur_hour, aes(x=HOUR, y=n)) +
   theme_minimal()
 
 ```
+
+**Conclusion:** The highest risk of gun violence occurs after dark. With a significant risk increase beginning in the evening hours, and remaining high until a steep decline beginning around 4 AM.
+
+Create linear regression model and print results.
+
+```{r linear_reg}
+NYPD_data_tidy <- NYPD_data_tidy %>%
+  mutate(Total = ifelse(!is.na(VIC_AGE_GROUP), 1, 0)) %>%
+  group_by(VIC_AGE_GROUP) %>%
+  mutate(Total = cumsum(Total))
+
+lm_model <- lm(Total ~ Population, data = NYPD_data_tidy)
+
+summary(lm_model)
+
+```
+
+Creating a scatter plot with linear regression.
+
+```{r plot_linear_reg}
+ggplot(NYPD_data_tidy, aes(x = Population, y = Total)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  xlab("Population") +
+  ylab("Total Incidences") +
+  ggtitle("Linear Regression: Total Incidences vs Population")
+```
+
+## Step 4: Identify Any Potential Bias
+
+As a male in my twenties I might think that I am at a lower risk of becoming a target of crime in NYC. Through analysis, this prior assumption has been proven incorrect for gun violence. Men are 8.3x more likely to be a victim of a shooting in NYC. More specifically, a male between the ages of 18-24 is at a significantly higher risk of getting shot than any other group.
